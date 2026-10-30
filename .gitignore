@@ -1,0 +1,18 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Build output
+monitoring/build/
+
+# Local settings and secrets
+.env
+.env.*
+!.env.example
+.claude/settings.local.json
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,192 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  ReleaseGuard AI - storage forecast. Every 6 hours a Lambda fits a trend to the last 14 days of
+  database and server disk usage and publishes "days until full". Alarms warn days before the disk
+  fills, instead of when the site goes down.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: releaseguard
+  Environment:
+    Type: String
+    AllowedValues: [staging, production]
+    Default: staging
+  DBInstanceIdentifier:
+    Type: String
+    Default: ""
+    Description: RDS instance to forecast. Leave empty to skip.
+  InstanceId:
+    Type: String
+    Default: ""
+    Description: EC2 instance to forecast (CloudWatch Agent required). Leave empty to skip.
+  DiskPath:
+    Type: String
+    Default: /
+  WarningTopicArn:
+    Type: String
+  CriticalTopicArn:
+    Type: String
+  WarningDays:
+    Type: Number
+    Default: 14
+  CriticalDays:
+    Type: Number
+    Default: 5
+  LambdaCodeBucket:
+    Type: String
+  StorageForecastCodeKey:
+    Type: String
+    Default: releaseguard/storage_forecast.zip
+
+Conditions:
+  HasRds: !Not [!Equals [!Ref DBInstanceIdentifier, ""]]
+  HasEc2: !Not [!Equals [!Ref InstanceId, ""]]
+
+Resources:
+  ForecastRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: storage-forecast
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: WriteOwnLogs
+                Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !GetAtt ForecastLogGroup.Arn
+              - Sid: ReadMetrics
+                Effect: Allow
+                Action: [cloudwatch:GetMetricData]
+                Resource: "*" # no resource-level permissions for this action
+              - Sid: PublishForecastOnly
+                Effect: Allow
+                Action: [cloudwatch:PutMetricData]
+                Resource: "*"
+                Condition:
+                  StringEquals: { "cloudwatch:namespace": ReleaseGuard/Forecast }
+
+  ForecastLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ProjectName}-${Environment}-storage-forecast
+      RetentionInDays: 30
+
+  ForecastFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${ProjectName}-${Environment}-storage-forecast
+      Description: Publishes days-until-full forecasts for database and server disks
+      Runtime: python3.12
+      Architectures: [x86_64]
+      Handler: storage_forecast.handler.lambda_handler
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref StorageForecastCodeKey
+      Role: !GetAtt ForecastRole.Arn
+      Timeout: 60
+      MemorySize: 256
+      LoggingConfig:
+        LogGroup: !Ref ForecastLogGroup
+      Environment:
+        Variables:
+          RDS_INSTANCES: !Ref DBInstanceIdentifier
+          EC2_DISKS: !If [HasEc2, !Sub "${InstanceId}:${DiskPath}", ""]
+          LOOKBACK_DAYS: "14"
+          NAMESPACE: ReleaseGuard/Forecast
+
+  ForecastSchedule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub ${ProjectName}-${Environment}-storage-forecast
+      ScheduleExpression: rate(6 hours)
+      Targets:
+        - Id: forecast
+          Arn: !GetAtt ForecastFunction.Arn
+
+  ForecastSchedulePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ForecastFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt ForecastSchedule.Arn
+
+  RdsForecastWarningAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: HasRds
+    Properties:
+      AlarmName: !Sub ${Environment}-forecast-rds-${DBInstanceIdentifier}-full-in-${WarningDays}-days
+      AlarmDescription: !Sub "At the current growth rate, RDS ${DBInstanceIdentifier} storage will be full in under ${WarningDays} days. runbook=db-disk-full"
+      Namespace: ReleaseGuard/Forecast
+      MetricName: DaysUntilFull
+      Dimensions: [{ Name: Resource, Value: !Sub "rds:${DBInstanceIdentifier}" }]
+      Statistic: Minimum
+      Period: 21600
+      EvaluationPeriods: 1
+      Threshold: !Ref WarningDays
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: missing
+      AlarmActions: [!Ref WarningTopicArn]
+      OKActions: [!Ref WarningTopicArn]
+
+  RdsForecastCriticalAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: HasRds
+    Properties:
+      AlarmName: !Sub ${Environment}-forecast-rds-${DBInstanceIdentifier}-full-in-${CriticalDays}-days
+      AlarmDescription: !Sub "At the current growth rate, RDS ${DBInstanceIdentifier} storage will be full in under ${CriticalDays} days. runbook=db-disk-full"
+      Namespace: ReleaseGuard/Forecast
+      MetricName: DaysUntilFull
+      Dimensions: [{ Name: Resource, Value: !Sub "rds:${DBInstanceIdentifier}" }]
+      Statistic: Minimum
+      Period: 21600
+      EvaluationPeriods: 1
+      Threshold: !Ref CriticalDays
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: missing
+      AlarmActions: [!Ref CriticalTopicArn]
+      OKActions: [!Ref CriticalTopicArn]
+
+  Ec2ForecastWarningAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: HasEc2
+    Properties:
+      AlarmName: !Sub ${Environment}-forecast-ec2-${InstanceId}-full-in-${WarningDays}-days
+      AlarmDescription: !Sub "At the current growth rate, disk ${DiskPath} on ${InstanceId} will be full in under ${WarningDays} days. runbook=server-disk-full"
+      Namespace: ReleaseGuard/Forecast
+      MetricName: DaysUntilFull
+      Dimensions: [{ Name: Resource, Value: !Sub "ec2:${InstanceId}:${DiskPath}" }]
+      Statistic: Minimum
+      Period: 21600
+      EvaluationPeriods: 1
+      Threshold: !Ref WarningDays
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: missing
+      AlarmActions: [!Ref WarningTopicArn]
+      OKActions: [!Ref WarningTopicArn]
+
+  Ec2ForecastCriticalAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: HasEc2
+    Properties:
+      AlarmName: !Sub ${Environment}-forecast-ec2-${InstanceId}-full-in-${CriticalDays}-days
+      AlarmDescription: !Sub "At the current growth rate, disk ${DiskPath} on ${InstanceId} will be full in under ${CriticalDays} days. runbook=server-disk-full"
+      Namespace: ReleaseGuard/Forecast
+      MetricName: DaysUntilFull
+      Dimensions: [{ Name: Resource, Value: !Sub "ec2:${InstanceId}:${DiskPath}" }]
+      Statistic: Minimum
+      Period: 21600
+      EvaluationPeriods: 1
+      Threshold: !Ref CriticalDays
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: missing
+      AlarmActions: [!Ref CriticalTopicArn]
+      OKActions: [!Ref CriticalTopicArn]

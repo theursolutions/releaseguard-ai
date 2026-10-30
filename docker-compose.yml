@@ -1,0 +1,112 @@
+# ReleaseGuard AI: portal + microservices.
+#   cp .env.example .env    (then fill in the values, see README)
+#   docker compose up --build
+# Only the portal is published (http://localhost:8080). The services are reachable only on the
+# internal network, and only with their tokens.
+
+x-portal: &portal
+  build: ./portal
+  environment:
+    APP_NAME: ReleaseGuard AI
+    APP_ENV: ${APP_ENV:-local}
+    APP_DEBUG: ${APP_DEBUG:-false}
+    APP_KEY: ${APP_KEY:?Set APP_KEY in .env}
+    APP_URL: ${APP_URL:-http://localhost:8080}
+    SESSION_DRIVER: database
+    CACHE_STORE: database
+    CACHE_LIMITER: file
+    # The portal workers and the queue worker share the SQLite file: wait for locks, and let reads run during writes.
+    DB_BUSY_TIMEOUT: "5000"
+    DB_JOURNAL_MODE: wal
+    QUEUE_CONNECTION: database
+    # Lets "php artisan serve" handle requests in parallel (needs --no-reload, see the Dockerfile). Required:
+    # while an assistant answer streams, the assistant service calls back into the portal for data.
+    # For a real production deployment, put nginx + php-fpm in front instead.
+    # 16, not 4: a slow source (for example a CRM query) must not occupy every worker and stall the page.
+    PHP_CLI_SERVER_WORKERS: "16"
+    PRD_SERVICE_URL: http://prd-service:8000
+    PRD_SERVICE_TOKEN: ${PRD_SERVICE_TOKEN:?Set PRD_SERVICE_TOKEN in .env}
+    MONITORING_SERVICE_URL: http://monitoring-service:8000
+    MONITORING_SERVICE_TOKEN: ${MONITORING_SERVICE_TOKEN:?Set MONITORING_SERVICE_TOKEN in .env}
+    ASSISTANT_SERVICE_URL: http://assistant-service:8000
+    ASSISTANT_SERVICE_TOKEN: ${ASSISTANT_SERVICE_TOKEN:?Set ASSISTANT_SERVICE_TOKEN in .env}
+    PERFORMANCE_SERVICE_URL: http://performance-service:8000
+    PERFORMANCE_SERVICE_TOKEN: ${PERFORMANCE_SERVICE_TOKEN:?Set PERFORMANCE_SERVICE_TOKEN in .env}
+    TOOLKIT_PATH: /var/www/toolkit
+    TOOLKIT_REPO_URL: ${TOOLKIT_REPO_URL:-}
+  volumes:
+    - portal-data:/data
+    - portal-uploads:/var/www/portal/storage/app/private
+    # Module A, read-only, for the assistant's Toolkit widget and the Toolkit page.
+    - ./toolkit:/var/www/toolkit:ro
+  networks: [releaseguard]
+  restart: unless-stopped
+
+services:
+  portal:
+    <<: *portal
+    ports:
+      - "${PORTAL_PORT:-8080}:8000"
+    depends_on: [prd-service, monitoring-service, assistant-service, performance-service]
+
+  portal-queue:
+    <<: *portal
+    command: ["php", "artisan", "queue:work", "--timeout=660", "--tries=1", "--sleep=2"]
+    depends_on: [portal]
+
+  prd-service:
+    # Services build from the repository root to include the shared AI gateway (services/shared).
+    build:
+      context: .
+      dockerfile: services/prd-service/Dockerfile
+    environment:
+      SERVICE_TOKEN: ${PRD_SERVICE_TOKEN}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # lets an OpenAI-compatible base URL point at a local Ollama
+    networks: [releaseguard]
+    restart: unless-stopped
+
+  assistant-service:
+    build:
+      context: .
+      dockerfile: services/assistant-service/Dockerfile
+    environment:
+      SERVICE_TOKEN: ${ASSISTANT_SERVICE_TOKEN}
+      # Where the service fetches business data (tool calls). Fixed here, never taken from a request.
+      PORTAL_INTERNAL_URL: http://portal:8000
+      ASSISTANT_EFFORT: low
+      # Optional "server identity" credentials, configured by DevOps instead of in the portal:
+      # ANTHROPIC_API_KEY, or the Workload Identity Federation variables (ANTHROPIC_FEDERATION_RULE_ID, ...).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks: [releaseguard]
+    restart: unless-stopped
+
+  performance-service:
+    build:
+      context: .
+      dockerfile: services/performance-service/Dockerfile
+    environment:
+      SERVICE_TOKEN: ${PERFORMANCE_SERVICE_TOKEN}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # reach a CRM database on this computer (e.g. Laragon MySQL)
+    networks: [releaseguard]
+    restart: unless-stopped
+
+  monitoring-service:
+    build:
+      context: .
+      dockerfile: services/monitoring-service/Dockerfile
+    environment:
+      SERVICE_TOKEN: ${MONITORING_SERVICE_TOKEN}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks: [releaseguard]
+    restart: unless-stopped
+
+networks:
+  releaseguard:
+
+volumes:
+  portal-data:
+  portal-uploads:

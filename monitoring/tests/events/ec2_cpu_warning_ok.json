@@ -1,0 +1,11 @@
+{
+  "Records": [
+    {
+      "EventSource": "aws:sns",
+      "Sns": {
+        "TopicArn": "arn:aws:sns:ap-southeast-1:123456789012:releaseguard-production-warning",
+        "Message": "{\"AlarmName\":\"production-ec2-web-1-cpu-warning\",\"AlarmDescription\":\"Server web-1 CPU above 85% for 10 minutes. runbook=cpu-spike\",\"AWSAccountId\":\"123456789012\",\"NewStateValue\":\"OK\",\"NewStateReason\":\"Threshold Crossed: 2 out of the last 2 datapoints were not greater than the threshold (85.0).\",\"StateChangeTime\":\"2026-10-23T10:05:00.000+0000\",\"AlarmArn\":\"arn:aws:cloudwatch:ap-southeast-1:123456789012:alarm:production-ec2-web-1-cpu-warning\",\"OldStateValue\":\"ALARM\",\"Trigger\":{\"MetricName\":\"CPUUtilization\",\"Namespace\":\"AWS/EC2\",\"StatisticType\":\"Statistic\",\"Statistic\":\"AVERAGE\",\"Dimensions\":[{\"value\":\"i-0abc1234def567890\",\"name\":\"InstanceId\"}],\"Period\":300,\"EvaluationPeriods\":2,\"ComparisonOperator\":\"GreaterThanThreshold\",\"Threshold\":85.0}}"
+      }
+    }
+  ]
+}

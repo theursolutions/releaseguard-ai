@@ -1,0 +1,205 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  ReleaseGuard AI - alert routing. Two SNS topics (warning, critical) and the AI incident
+  assistant Lambda, which posts every alarm to Slack with a Claude diagnosis.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: releaseguard
+    AllowedPattern: "^[a-z][a-z0-9-]{1,20}$"
+  Environment:
+    Type: String
+    AllowedValues: [staging, production]
+    Default: staging
+  AnthropicApiKeySecretArn:
+    Type: String
+    Description: ARN of the Secrets Manager secret holding the Claude API key (create it first, never put the key here).
+    AllowedPattern: "^arn:aws[a-z-]*:secretsmanager:.+"
+  SlackWebhookSecretArn:
+    Type: String
+    Description: ARN of the Secrets Manager secret holding the Slack incoming-webhook URL.
+    AllowedPattern: "^arn:aws[a-z-]*:secretsmanager:.+"
+  CriticalAlertEmail:
+    Type: String
+    Default: ""
+    Description: Optional email that also receives critical alerts (backup channel if Slack or the Lambda fails).
+  LogGroupPrefix:
+    Type: String
+    Default: /releaseguard/
+    Description: Application log groups are named <prefix><environment>/<name> (created by 04-cloudwatch-agent.yaml).
+  ClaudeModel:
+    Type: String
+    Default: claude-opus-5-5
+  RunbookBaseUrl:
+    Type: String
+    Default: ""
+    Description: Optional base URL of the runbooks folder in Bitbucket, used for the "Runbook" button in Slack.
+  LambdaCodeBucket:
+    Type: String
+    Description: S3 bucket holding the packaged Lambda code (see monitoring/README.md).
+  IncidentAssistantCodeKey:
+    Type: String
+    Default: releaseguard/incident_assistant.zip
+
+Conditions:
+  HasEmail: !Not [!Equals [!Ref CriticalAlertEmail, ""]]
+
+Resources:
+  # Topics are not KMS-encrypted on purpose: CloudWatch alarms cannot publish to topics using the
+  # AWS-managed SNS key, and alert messages contain no secrets.
+  WarningTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub ${ProjectName}-${Environment}-warning
+      DisplayName: !Sub ReleaseGuard ${Environment} warning
+
+  CriticalTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub ${ProjectName}-${Environment}-critical
+      DisplayName: !Sub ReleaseGuard ${Environment} critical
+
+  CriticalEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasEmail
+    Properties:
+      TopicArn: !Ref CriticalTopic
+      Protocol: email
+      Endpoint: !Ref CriticalAlertEmail
+
+  IncidentAssistantRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: incident-assistant
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: WriteOwnLogs
+                Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !GetAtt IncidentAssistantLogGroup.Arn
+              - Sid: ReadMetrics
+                Effect: Allow
+                Action: [cloudwatch:GetMetricData]
+                Resource: "*" # GetMetricData does not support resource-level permissions
+              - Sid: FindAppLogGroups
+                Effect: Allow
+                Action: [logs:DescribeLogGroups]
+                Resource: "*" # DescribeLogGroups does not support resource-level permissions
+              - Sid: QueryAppLogs
+                Effect: Allow
+                Action: [logs:StartQuery]
+                Resource: !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${LogGroupPrefix}${Environment}/*
+              - Sid: ReadQueryResults
+                Effect: Allow
+                Action: [logs:GetQueryResults, logs:StopQuery]
+                Resource: "*" # query IDs are not resources
+              - Sid: ReadOwnSecrets
+                Effect: Allow
+                Action: [secretsmanager:GetSecretValue]
+                Resource: [!Ref AnthropicApiKeySecretArn, !Ref SlackWebhookSecretArn]
+
+  IncidentAssistantLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ProjectName}-${Environment}-incident-assistant
+      RetentionInDays: 30
+
+  IncidentAssistantFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${ProjectName}-${Environment}-incident-assistant
+      Description: Posts CloudWatch alarms to Slack with an AI diagnosis
+      Runtime: python3.12
+      Architectures: [x86_64]
+      Handler: incident_assistant.handler.lambda_handler
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref IncidentAssistantCodeKey
+      Role: !GetAtt IncidentAssistantRole.Arn
+      Timeout: 150
+      MemorySize: 512
+      # Caps parallel Claude calls (and cost) during an alarm storm.
+      ReservedConcurrentExecutions: 5
+      LoggingConfig:
+        LogGroup: !Ref IncidentAssistantLogGroup
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          ANTHROPIC_SECRET_ARN: !Ref AnthropicApiKeySecretArn
+          SLACK_SECRET_ARN: !Ref SlackWebhookSecretArn
+          CLAUDE_MODEL: !Ref ClaudeModel
+          LOG_GROUP_PREFIX: !Sub ${LogGroupPrefix}${Environment}/
+          RUNBOOK_BASE_URL: !Ref RunbookBaseUrl
+
+  # ReleaseGuard topics of this environment in this region may invoke the function.
+  SnsInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref IncidentAssistantFunction
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !Sub arn:${AWS::Partition}:sns:${AWS::Region}:${AWS::AccountId}:${ProjectName}-${Environment}-*
+
+  # The uptime topic lives in us-east-1 (Route 53 health check metrics exist only there), see 06-uptime.yaml.
+  UptimeSnsInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref IncidentAssistantFunction
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !Sub arn:${AWS::Partition}:sns:us-east-1:${AWS::AccountId}:${ProjectName}-${Environment}-uptime
+
+  WarningSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref WarningTopic
+      Protocol: lambda
+      Endpoint: !GetAtt IncidentAssistantFunction.Arn
+
+  CriticalSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref CriticalTopic
+      Protocol: lambda
+      Endpoint: !GetAtt IncidentAssistantFunction.Arn
+
+  # If the assistant itself fails, alert through the critical topic so email subscribers still hear about it.
+  IncidentAssistantErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${Environment}-releaseguard-incident-assistant-errors
+      AlarmDescription: The incident assistant Lambda is failing, so alerts may not reach Slack. runbook=deployment-failure
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref IncidentAssistantFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref CriticalTopic]
+
+Outputs:
+  WarningTopicArn:
+    Value: !Ref WarningTopic
+    Export: { Name: !Sub "${ProjectName}-${Environment}-WarningTopicArn" }
+  CriticalTopicArn:
+    Value: !Ref CriticalTopic
+    Export: { Name: !Sub "${ProjectName}-${Environment}-CriticalTopicArn" }
+  IncidentAssistantFunctionArn:
+    Value: !GetAtt IncidentAssistantFunction.Arn
+    Export: { Name: !Sub "${ProjectName}-${Environment}-IncidentAssistantArn" }

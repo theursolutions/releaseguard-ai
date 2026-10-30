@@ -1,0 +1,129 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  ReleaseGuard AI - uptime checks. Route 53 health checks load key pages every 30 seconds from
+  several AWS locations and alert when the site is down.
+  MUST be deployed in us-east-1: Route 53 health check metrics only exist there. The alert goes to
+  a us-east-1 topic that invokes the incident assistant in your main region.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: releaseguard
+  Environment:
+    Type: String
+    AllowedValues: [staging, production]
+    Default: staging
+  SiteDomain:
+    Type: String
+    Description: Public domain name, without https://, e.g. crm.example.com
+  PrimaryPath:
+    Type: String
+    Default: /
+  SecondaryPath:
+    Type: String
+    Default: ""
+    Description: Optional second page to check, e.g. /admin/login. Leave empty to skip.
+  IncidentAssistantFunctionArn:
+    Type: String
+    Description: Output IncidentAssistantFunctionArn of the 01-alerting stack (in your main region).
+  CriticalAlertEmail:
+    Type: String
+    Default: ""
+
+Conditions:
+  HasSecondary: !Not [!Equals [!Ref SecondaryPath, ""]]
+  HasEmail: !Not [!Equals [!Ref CriticalAlertEmail, ""]]
+
+Resources:
+  # The "-uptime" suffix makes the incident assistant treat these alerts as critical.
+  UptimeTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub ${ProjectName}-${Environment}-uptime
+
+  UptimeLambdaSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref UptimeTopic
+      Protocol: lambda
+      Endpoint: !Ref IncidentAssistantFunctionArn
+
+  UptimeEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasEmail
+    Properties:
+      TopicArn: !Ref UptimeTopic
+      Protocol: email
+      Endpoint: !Ref CriticalAlertEmail
+
+  PrimaryHealthCheck:
+    Type: AWS::Route53::HealthCheck
+    Properties:
+      HealthCheckConfig:
+        Type: HTTPS
+        FullyQualifiedDomainName: !Ref SiteDomain
+        ResourcePath: !Ref PrimaryPath
+        Port: 443
+        RequestInterval: 30
+        FailureThreshold: 3
+        EnableSNI: true
+      HealthCheckTags:
+        - Key: Name
+          Value: !Sub ${Environment}-${SiteDomain}${PrimaryPath}
+
+  PrimaryDownAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${Environment}-uptime-${SiteDomain}-primary-down
+      AlarmDescription: !Sub "https://${SiteDomain}${PrimaryPath} is not responding from AWS health checkers. runbook=deployment-failure"
+      Namespace: AWS/Route53
+      MetricName: HealthCheckStatus
+      Dimensions: [{ Name: HealthCheckId, Value: !Ref PrimaryHealthCheck }]
+      Statistic: Minimum
+      Period: 60
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions: [!Ref UptimeTopic]
+      OKActions: [!Ref UptimeTopic]
+
+  SecondaryHealthCheck:
+    Type: AWS::Route53::HealthCheck
+    Condition: HasSecondary
+    Properties:
+      HealthCheckConfig:
+        Type: HTTPS
+        FullyQualifiedDomainName: !Ref SiteDomain
+        ResourcePath: !Ref SecondaryPath
+        Port: 443
+        RequestInterval: 30
+        FailureThreshold: 3
+        EnableSNI: true
+      HealthCheckTags:
+        - Key: Name
+          Value: !Sub ${Environment}-${SiteDomain}${SecondaryPath}
+
+  SecondaryDownAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: HasSecondary
+    Properties:
+      AlarmName: !Sub ${Environment}-uptime-${SiteDomain}-secondary-down
+      AlarmDescription: !Sub "https://${SiteDomain}${SecondaryPath} is not responding from AWS health checkers. runbook=deployment-failure"
+      Namespace: AWS/Route53
+      MetricName: HealthCheckStatus
+      Dimensions: [{ Name: HealthCheckId, Value: !Ref SecondaryHealthCheck }]
+      Statistic: Minimum
+      Period: 60
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions: [!Ref UptimeTopic]
+      OKActions: [!Ref UptimeTopic]
+
+Outputs:
+  UptimeTopicArn:
+    Value: !Ref UptimeTopic

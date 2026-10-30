@@ -1,0 +1,170 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  ReleaseGuard AI - EC2 web server alarms: CPU, status checks, and memory and disk from the
+  CloudWatch Agent (install it with 04-cloudwatch-agent.yaml first). Deploy once per server.
+
+Parameters:
+  Environment:
+    Type: String
+    AllowedValues: [staging, production]
+    Default: staging
+  InstanceId:
+    Type: AWS::EC2::Instance::Id
+  ServerName:
+    Type: String
+    Description: Friendly name used in alarm names, e.g. web-1
+    AllowedPattern: "^[a-zA-Z0-9-]+$"
+  DiskPath:
+    Type: String
+    Default: /
+  WarningTopicArn:
+    Type: String
+  CriticalTopicArn:
+    Type: String
+  CpuWarningPercent:
+    Type: Number
+    Default: 85
+  CpuCriticalPercent:
+    Type: Number
+    Default: 95
+  MemoryWarningPercent:
+    Type: Number
+    Default: 85
+  MemoryCriticalPercent:
+    Type: Number
+    Default: 95
+  DiskWarningPercent:
+    Type: Number
+    Default: 80
+  DiskCriticalPercent:
+    Type: Number
+    Default: 90
+
+Resources:
+  CpuWarningAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${Environment}-ec2-${ServerName}-cpu-warning
+      AlarmDescription: !Sub "Server ${ServerName} CPU above ${CpuWarningPercent}% for 10 minutes. runbook=cpu-spike"
+      Namespace: AWS/EC2
+      MetricName: CPUUtilization
+      Dimensions: [{ Name: InstanceId, Value: !Ref InstanceId }]
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: !Ref CpuWarningPercent
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: missing
+      AlarmActions: [!Ref WarningTopicArn]
+      OKActions: [!Ref WarningTopicArn]
+
+  CpuCriticalAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${Environment}-ec2-${ServerName}-cpu-critical
+      AlarmDescription: !Sub "Server ${ServerName} CPU above ${CpuCriticalPercent}% for 10 minutes. runbook=cpu-spike"
+      Namespace: AWS/EC2
+      MetricName: CPUUtilization
+      Dimensions: [{ Name: InstanceId, Value: !Ref InstanceId }]
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: !Ref CpuCriticalPercent
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: missing
+      AlarmActions: [!Ref CriticalTopicArn]
+      OKActions: [!Ref CriticalTopicArn]
+
+  StatusCheckAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${Environment}-ec2-${ServerName}-status-check-failed
+      AlarmDescription: !Sub "Server ${ServerName} is failing EC2 status checks (instance or host problem). runbook=deployment-failure"
+      Namespace: AWS/EC2
+      MetricName: StatusCheckFailed
+      Dimensions: [{ Name: InstanceId, Value: !Ref InstanceId }]
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: breaching
+      AlarmActions: [!Ref CriticalTopicArn]
+      OKActions: [!Ref CriticalTopicArn]
+
+  MemoryWarningAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${Environment}-ec2-${ServerName}-memory-warning
+      AlarmDescription: !Sub "Server ${ServerName} memory above ${MemoryWarningPercent}% for 10 minutes. runbook=memory-pressure"
+      Namespace: CWAgent
+      MetricName: mem_used_percent
+      Dimensions: [{ Name: InstanceId, Value: !Ref InstanceId }]
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: !Ref MemoryWarningPercent
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: missing
+      AlarmActions: [!Ref WarningTopicArn]
+      OKActions: [!Ref WarningTopicArn]
+
+  MemoryCriticalAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${Environment}-ec2-${ServerName}-memory-critical
+      AlarmDescription: !Sub "Server ${ServerName} memory above ${MemoryCriticalPercent}%. Processes may be killed (out of memory). runbook=memory-pressure"
+      Namespace: CWAgent
+      MetricName: mem_used_percent
+      Dimensions: [{ Name: InstanceId, Value: !Ref InstanceId }]
+      Statistic: Average
+      Period: 60
+      EvaluationPeriods: 5
+      DatapointsToAlarm: 3
+      Threshold: !Ref MemoryCriticalPercent
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: missing
+      AlarmActions: [!Ref CriticalTopicArn]
+      OKActions: [!Ref CriticalTopicArn]
+
+  DiskWarningAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${Environment}-ec2-${ServerName}-disk-warning
+      AlarmDescription: !Sub "Server ${ServerName} disk ${DiskPath} above ${DiskWarningPercent}% used. runbook=server-disk-full"
+      Namespace: CWAgent
+      MetricName: disk_used_percent
+      Dimensions:
+        - { Name: InstanceId, Value: !Ref InstanceId }
+        - { Name: path, Value: !Ref DiskPath }
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: !Ref DiskWarningPercent
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: missing
+      AlarmActions: [!Ref WarningTopicArn]
+      OKActions: [!Ref WarningTopicArn]
+
+  DiskCriticalAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${Environment}-ec2-${ServerName}-disk-critical
+      AlarmDescription: !Sub "Server ${ServerName} disk ${DiskPath} above ${DiskCriticalPercent}% used. runbook=server-disk-full"
+      Namespace: CWAgent
+      MetricName: disk_used_percent
+      Dimensions:
+        - { Name: InstanceId, Value: !Ref InstanceId }
+        - { Name: path, Value: !Ref DiskPath }
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: !Ref DiskCriticalPercent
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: missing
+      AlarmActions: [!Ref CriticalTopicArn]
+      OKActions: [!Ref CriticalTopicArn]

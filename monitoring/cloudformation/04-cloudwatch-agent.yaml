@@ -1,0 +1,139 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  ReleaseGuard AI - installs and configures the CloudWatch Agent on tagged EC2 web servers through
+  SSM, with no SSH needed. EC2 does not report memory or disk usage by default; the agent adds them,
+  and ships Laravel, nginx and PHP-FPM error logs to CloudWatch Logs.
+  Prerequisite: the instances' IAM role has the AmazonSSMManagedInstanceCore and
+  CloudWatchAgentServerPolicy managed policies attached.
+
+Parameters:
+  Environment:
+    Type: String
+    AllowedValues: [staging, production]
+    Default: staging
+  TargetTagKey:
+    Type: String
+    Default: releaseguard:monitor
+    Description: Instances with this tag key (and the value below) get the agent.
+  TargetTagValue:
+    Type: String
+    Default: "true"
+  LogGroupPrefix:
+    Type: String
+    Default: /releaseguard/
+    Description: Must match LogGroupPrefix in 01-alerting.yaml.
+  LaravelLogPath:
+    Type: String
+    Default: /var/www/html/storage/logs/laravel*.log
+  NginxErrorLogPath:
+    Type: String
+    Default: /var/log/nginx/error.log
+  PhpFpmLogPath:
+    Type: String
+    Default: /var/log/php*-fpm.log
+  LogRetentionDays:
+    Type: Number
+    Default: 30
+    AllowedValues: [7, 14, 30, 60, 90]
+
+Resources:
+  LaravelLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub ${LogGroupPrefix}${Environment}/laravel
+      RetentionInDays: !Ref LogRetentionDays
+
+  NginxErrorLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub ${LogGroupPrefix}${Environment}/nginx-error
+      RetentionInDays: !Ref LogRetentionDays
+
+  PhpFpmLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub ${LogGroupPrefix}${Environment}/php-fpm
+      RetentionInDays: !Ref LogRetentionDays
+
+  # ${!aws:InstanceId} is escaped so CloudFormation leaves it for the agent to fill in.
+  # aggregation_dimensions publishes disk_used_percent with exactly {InstanceId, path}, the
+  # dimensions 03-ec2-alarms.yaml and the storage forecast use.
+  AgentConfigParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /releaseguard/${Environment}/cloudwatch-agent-config
+      Type: String
+      Description: CloudWatch Agent configuration for ReleaseGuard web servers
+      Value: !Sub |
+        {
+          "agent": { "metrics_collection_interval": 60, "run_as_user": "root" },
+          "metrics": {
+            "namespace": "CWAgent",
+            "append_dimensions": { "InstanceId": "${!aws:InstanceId}" },
+            "aggregation_dimensions": [["InstanceId"], ["InstanceId", "path"]],
+            "metrics_collected": {
+              "mem": { "measurement": ["mem_used_percent"] },
+              "swap": { "measurement": ["swap_used_percent"] },
+              "disk": {
+                "measurement": ["used_percent"],
+                "resources": ["*"],
+                "drop_device": true,
+                "ignore_file_system_types": ["sysfs", "devtmpfs", "tmpfs", "overlay", "squashfs"]
+              }
+            }
+          },
+          "logs": {
+            "logs_collected": {
+              "files": {
+                "collect_list": [
+                  {
+                    "file_path": "${LaravelLogPath}",
+                    "log_group_name": "${LaravelLogGroup}",
+                    "log_stream_name": "{instance_id}",
+                    "multi_line_start_pattern": "^\\[\\d{4}-\\d{2}-\\d{2}"
+                  },
+                  { "file_path": "${NginxErrorLogPath}", "log_group_name": "${NginxErrorLogGroup}", "log_stream_name": "{instance_id}" },
+                  { "file_path": "${PhpFpmLogPath}", "log_group_name": "${PhpFpmLogGroup}", "log_stream_name": "{instance_id}" }
+                ]
+              }
+            }
+          }
+        }
+
+  InstallAgentAssociation:
+    Type: AWS::SSM::Association
+    Properties:
+      AssociationName: !Sub releaseguard-${Environment}-install-cloudwatch-agent
+      Name: AWS-ConfigureAWSPackage
+      Parameters:
+        action: [Install]
+        name: [AmazonCloudWatchAgent]
+      Targets:
+        - Key: !Sub tag:${TargetTagKey}
+          Values: [!Ref TargetTagValue]
+      # Makes CloudFormation wait for the install, so the configure step below runs after it.
+      WaitForSuccessTimeoutSeconds: 600
+
+  ConfigureAgentAssociation:
+    Type: AWS::SSM::Association
+    DependsOn: InstallAgentAssociation
+    Properties:
+      AssociationName: !Sub releaseguard-${Environment}-configure-cloudwatch-agent
+      Name: AmazonCloudWatch-ManageAgent
+      Parameters:
+        action: [configure]
+        mode: [ec2]
+        optionalConfigurationSource: [ssm]
+        optionalConfigurationLocation: [!Ref AgentConfigParameter]
+        optionalRestart: ["yes"]
+      Targets:
+        - Key: !Sub tag:${TargetTagKey}
+          Values: [!Ref TargetTagValue]
+      # Re-applies daily, so new servers with the tag are configured automatically.
+      ScheduleExpression: rate(1 day)
+
+Outputs:
+  AgentConfigParameterName:
+    Value: !Ref AgentConfigParameter
+  LaravelLogGroupName:
+    Value: !Ref LaravelLogGroup

@@ -1,0 +1,777 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="Set up a web app, paste use cases in plain English and watch real browsers test it live.">
+  <title>devcrew QA</title>
+  <link rel="stylesheet" href="office.css">
+  <link rel="stylesheet" href="qa.css">
+  <script type="module" src="qa.js"></script>
+</head>
+<body class="qa">
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="topbar qa-topbar">
+    <h1 class="brand"><span class="brand-mark" aria-hidden="true"></span>devcrew <span class="brand-qa">QA</span></h1>
+    <div class="topbar-actions">
+      <a class="run-pill" id="run-pill" href="#/live" hidden>
+        <span class="rec-dot" aria-hidden="true"></span><span>Test running</span><span class="run-pill-cta">Watch</span>
+      </a>
+      <p class="conn" id="conn" role="status" data-state="connecting">
+        <span class="conn-dot" aria-hidden="true"></span><span id="conn-text">Connecting…</span>
+      </p>
+      <a class="btn btn-small topbar-link" href="/">
+        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 18l-6-6 6-6"/></svg>Office
+      </a>
+    </div>
+  </header>
+
+  <main class="qa-main" id="main" tabindex="-1">
+    <!-- ======================= Setup ======================= -->
+    <section class="qa-view" id="view-setup" aria-labelledby="h-setup">
+      <h2 class="sr-only" id="h-setup" tabindex="-1">Set up and run tests</h2>
+
+      <div class="setup-loading" id="setup-loading" aria-hidden="true">
+        <div class="skel skel-bar"></div>
+        <div class="setup-grid">
+          <div class="skel skel-card skel-tall"></div>
+          <div class="skel skel-card"></div>
+        </div>
+      </div>
+
+      <div class="welcome card" id="welcome" hidden>
+        <div class="welcome-art" aria-hidden="true">
+          <span class="mini-browser"><i></i><b></b></span>
+          <span class="mini-browser"><i></i><b></b></span>
+          <span class="mini-browser"><i></i><b></b></span>
+        </div>
+        <h2 class="welcome-title">Test any web app in three steps</h2>
+        <p class="welcome-lead">No code needed. Describe what to check in plain English and watch real browsers do it.</p>
+        <ol class="welcome-steps">
+          <li><strong>Add the app</strong><span>Its name and web address, for example your staging site.</span></li>
+          <li><strong>Add a test account</strong><span>The login you use for testing, like “Agent” or “Admin”.</span></li>
+          <li><strong>Paste your use cases</strong><span>One per line. Then press <em>Run test cycle</em>.</span></li>
+        </ol>
+        <button type="button" class="btn btn-primary btn-lg" id="btn-welcome-add">Add your first app</button>
+      </div>
+
+      <div class="workspace" id="workspace" hidden>
+        <div class="appbar">
+          <div class="appbar-pick">
+            <label class="field-label" for="app-select">App</label>
+            <select id="app-select" class="select app-select"></select>
+          </div>
+          <p class="appbar-meta" id="app-meta"></p>
+          <div class="appbar-actions">
+            <button type="button" class="btn" id="btn-add-app">
+              <svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"/></svg>Add app
+            </button>
+            <button type="button" class="btn btn-icon btn-ghost" id="btn-edit-app" aria-label="Edit this app" title="Edit this app">
+              <svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4zM13.5 6.5l4 4"/></svg>
+            </button>
+            <button type="button" class="btn btn-icon btn-ghost" id="btn-delete-app" aria-label="Delete this app" title="Delete this app">
+              <svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="setup-grid">
+          <section class="card card-cases" aria-labelledby="h-cases">
+            <div class="card-head">
+              <h2 class="card-title" id="h-cases">Test cases</h2>
+              <p class="card-sub" id="cases-summary"></p>
+            </div>
+
+            <form class="composer" id="composer" novalidate>
+              <div class="composer-head">
+                <label class="label-strong" for="cases-text">Paste use cases, one per line</label>
+                <button type="button" class="btn btn-small btn-ghost btn-link" id="btn-prd-import">
+                  <svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5M9 13h6M9 17h4"/></svg>Write them from a PRD
+                </button>
+              </div>
+              <textarea id="cases-text" class="input textarea" rows="4" spellcheck="true"
+                placeholder="Agent creates a lead; phone number is required&#10;Admin can deactivate a user&#10;Searching by phone finds the right customer"></textarea>
+              <p class="field-hint" id="cases-hint">Write each one the way you’d explain it to a colleague. Lines starting with # are skipped.</p>
+              <div class="composer-row">
+                <div class="field composer-tags">
+                  <label for="cases-tags">Tags <span class="optional">optional</span></label>
+                  <input id="cases-tags" class="input" type="text" autocomplete="off" placeholder="e.g. leads, smoke">
+                </div>
+                <button type="submit" class="btn btn-strong" id="btn-add-cases" disabled>Add cases</button>
+              </div>
+            </form>
+
+            <div class="prd-banner" id="prd-banner" role="status" hidden>
+              <span class="prd-banner-icon" aria-hidden="true">
+                <svg class="ic" viewBox="0 0 24 24" focusable="false"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5M9 13h6M9 17h4"/></svg>
+              </span>
+              <p class="prd-banner-text" id="prd-banner-text"></p>
+              <button type="button" class="btn btn-strong" id="btn-prd-review">Review</button>
+            </div>
+
+            <section class="learn-issues" id="learn-issues" aria-labelledby="learn-issues-title" hidden>
+              <div class="learn-issues-head">
+                <span class="learn-issues-icon" aria-hidden="true">
+                  <svg class="ic" viewBox="0 0 24 24" focusable="false"><path d="M12 7.5v6M12 17v.01"/></svg>
+                </span>
+                <div>
+                  <h3 class="learn-issues-title" id="learn-issues-title"></h3>
+                  <p class="learn-issues-sub">Grouped by why Claude Code couldn’t learn them. Fix the cause, then re-learn the group.</p>
+                </div>
+              </div>
+              <ul class="learn-groups" id="learn-groups"></ul>
+            </section>
+
+            <div class="case-tools" id="case-tools" hidden>
+              <div class="tag-filter" id="tag-filter" role="group" aria-label="Show cases with tag"></div>
+            </div>
+            <ul class="case-list" id="case-list" aria-label="Test cases"></ul>
+            <div class="empty-state" id="cases-empty" hidden>
+              <span class="empty-icon" aria-hidden="true">
+                <svg class="ic" viewBox="0 0 24 24" focusable="false"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg>
+              </span>
+              <p class="empty-title">No test cases yet</p>
+              <p class="empty-text">Paste a few use cases above. The first run learns each one automatically; after that they replay in seconds.</p>
+            </div>
+            <p class="empty-inline" id="cases-filtered-empty" hidden>No cases have this tag.</p>
+          </section>
+
+          <div class="setup-aside">
+            <section class="card card-run" id="card-run" aria-labelledby="h-run">
+              <h2 class="card-title" id="h-run">Run a test cycle</h2>
+
+              <div class="run-form" id="run-form">
+                <div class="field">
+                  <label for="run-env">Environment</label>
+                  <select id="run-env" class="select"></select>
+                  <p class="field-hint" id="run-env-hint"></p>
+                </div>
+                <div class="field">
+                  <label for="run-tag">Which cases</label>
+                  <select id="run-tag" class="select"><option value="">All cases</option></select>
+                </div>
+                <fieldset class="field seg-field">
+                  <legend>Browsers at the same time</legend>
+                  <div class="seg" id="run-parallel"></div>
+                </fieldset>
+                <fieldset class="field seg-field">
+                  <legend>New cases learned at the same time</legend>
+                  <div class="seg" id="run-learn-parallel"></div>
+                </fieldset>
+                <div class="toggles">
+                  <label class="toggle">
+                    <input type="checkbox" id="run-smoke" checked>
+                    <span class="toggle-ui" aria-hidden="true"></span>
+                    <span class="toggle-text"><strong>Smoke check</strong><span>Visits the app’s pages and finds errors and broken links</span></span>
+                  </label>
+                  <label class="toggle">
+                    <input type="checkbox" id="run-perf" checked>
+                    <span class="toggle-ui" aria-hidden="true"></span>
+                    <span class="toggle-text"><strong>Page speed</strong><span>Measures how fast pages load (Web Vitals)</span></span>
+                  </label>
+                  <label class="toggle">
+                    <input type="checkbox" id="run-fast-learn" checked>
+                    <span class="toggle-ui" aria-hidden="true"></span>
+                    <span class="toggle-text"><strong>Fast learning</strong><span>Learns new cases with Sonnet. Turn off to use your Claude Code model.</span></span>
+                  </label>
+                </div>
+
+                <ul class="readiness" id="readiness" aria-label="Before you can run" hidden></ul>
+
+                <button type="button" class="btn btn-primary btn-lg btn-run" id="btn-run">
+                  <svg class="ic ic-fill" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>
+                  <span id="btn-run-text">Run test cycle</span>
+                </button>
+                <p class="run-summary" id="run-summary" aria-live="polite"></p>
+              </div>
+
+              <div class="run-active" id="run-active" hidden>
+                <div class="run-active-row">
+                  <span class="rec-dot" aria-hidden="true"></span>
+                  <p><strong id="run-active-title">A test cycle is running.</strong> <span id="run-active-text"></span></p>
+                </div>
+                <a class="btn btn-primary btn-lg" id="run-active-watch" href="#/live">Watch it live</a>
+              </div>
+            </section>
+
+            <section class="card card-load" id="card-load" aria-labelledby="h-load">
+              <div class="card-head">
+                <h2 class="card-title" id="h-load">Load &amp; stress test</h2>
+                <span class="pill" title="Only GET requests, only to this app, never on production">Read-only</span>
+              </div>
+
+              <fieldset class="field seg-field">
+                <legend class="sr-only">Kind of test</legend>
+                <div class="seg seg-2" id="load-mode">
+                  <input type="radio" name="load-mode" id="load-mode-load" value="load" class="seg-input" checked>
+                  <label for="load-mode-load" class="seg-item">Load test</label>
+                  <input type="radio" name="load-mode" id="load-mode-stress" value="stress" class="seg-input">
+                  <label for="load-mode-stress" class="seg-item">Stress test</label>
+                </div>
+              </fieldset>
+              <p class="load-explain" id="load-explain"></p>
+
+              <div class="field">
+                <label for="load-env">Environment</label>
+                <select id="load-env" class="select"></select>
+                <p class="field-hint" id="load-env-hint"></p>
+              </div>
+
+              <div class="field">
+                <span class="load-field-label" id="load-paths-label">Pages to visit</span>
+                <ul class="page-chips" id="load-paths" aria-labelledby="load-paths-label"></ul>
+                <form class="page-add" id="load-path-form" novalidate>
+                  <label class="sr-only" for="load-path-input">Add a page, for example /dashboard</label>
+                  <input id="load-path-input" class="input" type="text" autocomplete="off" spellcheck="false" placeholder="/dashboard" maxlength="300">
+                  <button type="submit" class="btn" id="load-path-add">Add</button>
+                </form>
+                <p class="form-error form-error-inline" id="load-path-error" role="alert" hidden></p>
+                <div class="suggest" id="load-suggest-wrap" hidden>
+                  <p class="field-hint" id="load-suggest-hint">From the last smoke check</p>
+                  <div class="suggest-chips" id="load-suggest" role="group" aria-labelledby="load-suggest-hint"></div>
+                </div>
+              </div>
+
+              <div id="load-fields-load">
+                <div class="field range-field">
+                  <div class="range-head"><label for="load-users">Virtual users</label><output id="load-users-out" for="load-users"></output></div>
+                  <input type="range" id="load-users" class="range" min="1" max="50" step="1" value="10">
+                  <div class="range-ends" aria-hidden="true"><span>1</span><span>50</span></div>
+                </div>
+                <div class="field range-field">
+                  <div class="range-head"><label for="load-duration">How long</label><output id="load-duration-out" for="load-duration"></output></div>
+                  <input type="range" id="load-duration" class="range" min="10" max="300" step="10" value="60">
+                  <div class="range-ends" aria-hidden="true"><span>10 s</span><span>5 min</span></div>
+                </div>
+              </div>
+
+              <div id="load-fields-stress" hidden>
+                <div class="num-grid">
+                  <div class="field">
+                    <label for="stress-start">Start with</label>
+                    <div class="num-step" data-for="stress-start"><button type="button" class="btn btn-icon" data-step="-1" aria-label="Fewer start users">−</button><input id="stress-start" class="input" type="number" inputmode="numeric" min="1" max="50" value="2"><button type="button" class="btn btn-icon" data-step="1" aria-label="More start users">+</button></div>
+                    <p class="field-hint">users</p>
+                  </div>
+                  <div class="field">
+                    <label for="stress-step">Add each step</label>
+                    <div class="num-step" data-for="stress-step"><button type="button" class="btn btn-icon" data-step="-1" aria-label="Add fewer users each step">−</button><input id="stress-step" class="input" type="number" inputmode="numeric" min="1" max="50" value="2"><button type="button" class="btn btn-icon" data-step="1" aria-label="Add more users each step">+</button></div>
+                    <p class="field-hint">users</p>
+                  </div>
+                  <div class="field">
+                    <label for="stress-every">Step every</label>
+                    <div class="num-step" data-for="stress-every"><button type="button" class="btn btn-icon" data-step="-1" aria-label="Shorter steps">−</button><input id="stress-every" class="input" type="number" inputmode="numeric" min="3" max="60" value="10"><button type="button" class="btn btn-icon" data-step="1" aria-label="Longer steps">+</button></div>
+                    <p class="field-hint">seconds</p>
+                  </div>
+                  <div class="field">
+                    <label for="stress-max">Up to</label>
+                    <div class="num-step" data-for="stress-max"><button type="button" class="btn btn-icon" data-step="-1" aria-label="Fewer max users">−</button><input id="stress-max" class="input" type="number" inputmode="numeric" min="1" max="50" value="20"><button type="button" class="btn btn-icon" data-step="1" aria-label="More max users">+</button></div>
+                    <p class="field-hint">users (max 50)</p>
+                  </div>
+                </div>
+                <fieldset class="stop-when">
+                  <legend>Stop when, for a whole step</legend>
+                  <div class="stop-row">
+                    <label for="stress-errors">More than</label>
+                    <input id="stress-errors" class="input input-num" type="number" inputmode="decimal" min="0" max="100" step="0.5" value="5">
+                    <span>% of requests fail</span>
+                  </div>
+                  <div class="stop-row">
+                    <label for="stress-p95">or 1 in 20 takes longer than</label>
+                    <input id="stress-p95" class="input input-num" type="number" inputmode="numeric" min="50" max="10000" step="50" value="2000">
+                    <span>ms</span>
+                  </div>
+                </fieldset>
+              </div>
+
+              <details class="more-settings" id="load-more">
+                <summary>More settings</summary>
+                <div class="more-body">
+                  <div class="field range-field" id="load-ramp-field">
+                    <div class="range-head"><label for="load-ramp">Users join over</label><output id="load-ramp-out" for="load-ramp"></output></div>
+                    <input type="range" id="load-ramp" class="range" min="0" max="60" step="1" value="0">
+                    <p class="field-hint">0 means everyone starts at once.</p>
+                  </div>
+                  <div class="field range-field">
+                    <div class="range-head"><label for="load-think">Pause between pages</label><output id="load-think-out" for="load-think"></output></div>
+                    <input type="range" id="load-think" class="range" min="0" max="5000" step="100" value="500">
+                    <p class="field-hint">How long each user waits before opening the next page, like a person reading.</p>
+                  </div>
+                </div>
+              </details>
+
+              <div class="field">
+                <label for="load-account">Logged in as</label>
+                <select id="load-account" class="select"></select>
+              </div>
+
+              <ul class="readiness" id="load-readiness" aria-label="Before you can start" hidden></ul>
+
+              <button type="button" class="btn btn-primary btn-lg btn-load" id="btn-load">
+                <svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 12h4l3-7 4 14 3-7h4"/></svg>
+                <span id="btn-load-text">Start load test</span>
+              </button>
+              <p class="run-summary" id="load-summary" aria-live="polite"></p>
+            </section>
+
+            <section class="card card-accounts" aria-labelledby="h-accounts">
+              <div class="card-head">
+                <h2 class="card-title" id="h-accounts">Test accounts</h2>
+                <button type="button" class="btn btn-small" id="btn-show-account" aria-expanded="false" aria-controls="account-form">
+                  <svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"/></svg>Add
+                </button>
+              </div>
+              <ul class="account-list" id="account-list" aria-label="Test accounts"></ul>
+              <p class="empty-inline" id="accounts-empty">Add the login you test with, like “Agent” or “Admin”. The label is what you’ll see on each browser.</p>
+
+              <form class="account-form" id="account-form" novalidate hidden>
+                <div class="field">
+                  <label for="acc-label">Label</label>
+                  <input id="acc-label" class="input" type="text" autocomplete="off" placeholder="e.g. Agent" maxlength="40" required>
+                </div>
+                <div class="field">
+                  <label for="acc-user">Username or email</label>
+                  <input id="acc-user" class="input" type="text" autocomplete="off" spellcheck="false" required>
+                </div>
+                <div class="field">
+                  <label for="acc-pass">Password</label>
+                  <input id="acc-pass" class="input" type="password" autocomplete="new-password" required>
+                </div>
+                <div class="field">
+                  <label for="acc-env">Use on</label>
+                  <select id="acc-env" class="select"></select>
+                </div>
+                <p class="form-error" id="acc-error" role="alert" hidden></p>
+                <p class="field-hint note">
+                  <svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 11V8a5 5 0 0 1 10 0v3M6 11h12v9H6z"/></svg>
+                  Saved only on this computer. The password is never shown again and never sent to the AI.
+                </p>
+                <div class="form-actions">
+                  <button type="button" class="btn btn-ghost" id="acc-cancel">Cancel</button>
+                  <button type="submit" class="btn btn-strong" id="acc-save">Save account</button>
+                </div>
+              </form>
+            </section>
+
+            <section class="card card-history" aria-labelledby="h-history">
+              <h2 class="card-title" id="h-history">Recent tests</h2>
+              <ol class="run-list" id="run-list"></ol>
+              <p class="empty-inline" id="runs-empty">No tests yet. Reports appear here after each run.</p>
+            </section>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================= Live ======================= -->
+    <section class="qa-view" id="view-live" aria-labelledby="h-live" hidden>
+      <div class="view-head">
+        <a class="btn btn-ghost btn-back" href="#/">
+          <svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 18l-6-6 6-6"/></svg>Test cases
+        </a>
+        <div class="view-title">
+          <h2 id="h-live" tabindex="-1">Test cycle</h2>
+          <p class="view-sub" id="live-sub"></p>
+        </div>
+        <div class="view-actions">
+          <span class="live-pill" id="live-pill" data-state="live">
+            <span class="rec-dot" aria-hidden="true"></span><span id="live-pill-text">Live</span>
+          </span>
+          <span class="clock" id="live-elapsed" title="Time since the test cycle started">0:00</span>
+          <button type="button" class="btn btn-danger" id="btn-stop">
+            <svg class="ic ic-fill" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>Stop
+          </button>
+        </div>
+      </div>
+
+      <div class="card live-progress">
+        <div class="stepper-wrap">
+          <div class="stepper-track" aria-hidden="true"><span class="stepper-fill" id="stepper-fill"></span></div>
+          <ol class="stepper" id="stepper" aria-label="Progress"></ol>
+        </div>
+        <div class="live-progress-foot">
+          <div class="phase-msg-wrap">
+            <p class="phase-msg" id="phase-msg" role="status">Starting…</p>
+          </div>
+          <div class="stats" id="live-stats" aria-label="Results so far">
+            <div class="stat stat-pass"><span class="stat-num" id="stat-pass">0</span><span class="stat-label">Passed</span></div>
+            <div class="stat stat-fail"><span class="stat-num" id="stat-fail">0</span><span class="stat-label">Failed</span></div>
+            <div class="stat stat-left"><span class="stat-num" id="stat-left">0</span><span class="stat-label" id="stat-left-label">Running now</span></div>
+          </div>
+        </div>
+        <div class="result-bar" id="result-bar" aria-hidden="true"><span class="result-bar-pass" id="bar-pass"></span><span class="result-bar-fail" id="bar-fail"></span></div>
+      </div>
+
+      <div class="live-done card" id="live-done" hidden tabindex="-1">
+        <span class="live-done-icon" id="live-done-icon" aria-hidden="true"></span>
+        <div class="live-done-text">
+          <p class="live-done-title" id="live-done-title"></p>
+          <p class="live-done-sub" id="live-done-sub"></p>
+        </div>
+        <div class="live-done-actions">
+          <a class="btn btn-primary" id="live-done-report" href="#/">See the report</a>
+        </div>
+      </div>
+
+      <section class="load-live" id="load-live" aria-label="Live load results" hidden>
+        <div class="kpis">
+          <div class="kpi kpi-hero">
+            <span class="kpi-label">Requests per second</span>
+            <span class="kpi-value" id="kpi-rps">0</span>
+            <span class="kpi-sub" id="kpi-rps-sub"></span>
+          </div>
+          <div class="kpi">
+            <span class="kpi-label">Response time <abbr title="95th percentile: 19 in 20 requests answered faster than this">p95</abbr></span>
+            <span class="kpi-value"><span id="kpi-p95">–</span><span class="kpi-unit">ms</span></span>
+            <span class="kpi-sub" id="kpi-p50"></span>
+          </div>
+          <div class="kpi kpi-errors" id="kpi-errors-tile">
+            <span class="kpi-label">Errors</span>
+            <span class="kpi-value"><span id="kpi-err">0</span><span class="kpi-unit">%</span></span>
+            <span class="kpi-sub" id="kpi-err-sub"></span>
+          </div>
+          <div class="kpi">
+            <span class="kpi-label">Users</span>
+            <span class="kpi-value" id="kpi-users">0</span>
+            <span class="kpi-sub" id="kpi-users-sub"></span>
+          </div>
+          <div class="kpi">
+            <span class="kpi-label">Requests</span>
+            <span class="kpi-value" id="kpi-req">0</span>
+            <span class="kpi-sub">so far</span>
+          </div>
+        </div>
+        <div class="charts" id="load-charts"></div>
+      </section>
+
+      <div class="live-grid" id="live-grid">
+        <section class="wall-wrap" aria-labelledby="h-wall">
+          <div class="section-head">
+            <h3 id="h-wall">Browsers</h3>
+            <span class="section-sub" id="wall-count"></span>
+          </div>
+          <ul class="wall" id="wall" aria-label="Live browsers"></ul>
+          <div class="wall-empty" id="wall-empty">
+            <div class="wall-ghosts" aria-hidden="true"><span></span><span></span><span></span></div>
+            <p id="wall-empty-text">Browsers appear here as soon as testing starts.</p>
+          </div>
+          <div class="tray-wrap" id="tray-wrap" hidden>
+            <div class="section-head">
+              <h3>Finished</h3>
+              <span class="section-sub" id="tray-count"></span>
+            </div>
+            <ul class="tray" id="tray" aria-label="Finished browsers"></ul>
+          </div>
+        </section>
+
+        <section class="card log-card" aria-labelledby="h-log">
+          <h3 class="card-title" id="h-log">What’s happening</h3>
+          <ol class="log" id="log"></ol>
+          <p class="empty-inline" id="log-empty">Steps will appear here as the browsers work.</p>
+        </section>
+      </div>
+    </section>
+
+    <!-- ======================= Report ======================= -->
+    <section class="qa-view" id="view-report" aria-labelledby="h-report" hidden>
+      <div class="view-head">
+        <a class="btn btn-ghost btn-back" href="#/">
+          <svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 18l-6-6 6-6"/></svg>Test cases
+        </a>
+        <div class="view-title">
+          <h2 id="h-report" tabindex="-1">Report</h2>
+          <p class="view-sub" id="report-sub"></p>
+        </div>
+        <div class="view-actions">
+          <a class="btn" id="report-html" target="_blank" rel="noopener noreferrer" hidden>
+            Full Playwright report
+            <svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
+          </a>
+        </div>
+      </div>
+
+      <div class="report-loading" id="report-loading" aria-hidden="true">
+        <div class="skel skel-card"></div>
+        <div class="skel skel-card skel-tall"></div>
+      </div>
+      <div class="card report-error" id="report-error" role="alert" hidden></div>
+
+      <div class="report-grid" id="report-body" hidden>
+        <div class="report-main">
+          <div class="load-report" id="load-report" hidden>
+            <section class="card load-verdict" id="load-verdict" aria-labelledby="load-headline">
+              <div class="load-verdict-top">
+                <span class="verdict-icon" id="load-verdict-icon" aria-hidden="true"></span>
+                <div class="load-verdict-text">
+                  <p class="load-kind" id="load-kind"></p>
+                  <h3 class="summary-headline" id="load-headline"></h3>
+                  <p class="load-detail" id="load-detail"></p>
+                </div>
+              </div>
+              <dl class="load-numbers" id="load-numbers"></dl>
+              <p class="summary-meta" id="load-meta"></p>
+            </section>
+
+            <section class="card breaking" id="load-breaking" aria-labelledby="load-breaking-title" hidden>
+              <div class="breaking-scale" id="load-breaking-scale" aria-hidden="true"></div>
+              <div class="breaking-text">
+                <h3 class="card-title" id="load-breaking-title"></h3>
+                <p class="card-sub" id="load-breaking-sub"></p>
+              </div>
+            </section>
+
+            <section class="card" id="load-session" role="note" hidden>
+              <p class="session-lost" id="load-session-text"></p>
+            </section>
+
+            <section class="card" aria-labelledby="h-load-time">
+              <div class="card-head">
+                <h3 class="card-title" id="h-load-time">Second by second</h3>
+                <p class="card-sub" id="load-time-sub"></p>
+              </div>
+              <div class="charts" id="report-charts"></div>
+              <details class="table-toggle">
+                <summary>Show the numbers as a table</summary>
+                <div class="table-wrap">
+                  <table class="data-table" id="load-seconds">
+                    <thead><tr><th scope="col">Time</th><th scope="col">Users</th><th scope="col">Requests/s</th><th scope="col">p50</th><th scope="col">p95</th><th scope="col">Errors</th></tr></thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+              </details>
+            </section>
+
+            <section class="card" id="load-steps-card" aria-labelledby="h-load-steps" hidden>
+              <h3 class="card-title" id="h-load-steps">Steps</h3>
+              <div class="table-wrap">
+                <table class="data-table" id="load-steps">
+                  <thead><tr><th scope="col">Users</th><th scope="col">Requests</th><th scope="col">p95</th><th scope="col">Errors</th><th scope="col">Result</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="card" aria-labelledby="h-load-pages">
+              <h3 class="card-title" id="h-load-pages">Pages</h3>
+              <div class="table-wrap">
+                <table class="data-table" id="load-pages">
+                  <thead><tr><th scope="col">Page</th><th scope="col">Requests</th><th scope="col">Errors</th><th scope="col">p50</th><th scope="col">p95</th><th scope="col">Slowest</th><th scope="col" title="Redirects are not followed; they are counted here">Redirects</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+              <ul class="error-kinds" id="load-error-kinds" aria-label="What went wrong" hidden></ul>
+            </section>
+          </div>
+
+          <section class="card summary cycle-only" aria-label="Summary">
+            <div class="ring" id="report-ring"></div>
+            <div class="summary-body">
+              <p class="summary-headline" id="summary-headline"></p>
+              <dl class="summary-counts" id="summary-counts"></dl>
+              <p class="summary-meta" id="summary-meta"></p>
+            </div>
+          </section>
+
+          <section class="card compare cycle-only" aria-labelledby="h-compare">
+            <h3 class="card-title" id="h-compare">Compared with the previous run</h3>
+            <div class="compare-chips" id="compare-chips"></div>
+            <p class="card-sub" id="compare-note"></p>
+          </section>
+
+          <section class="card cycle-only" aria-labelledby="h-rcases">
+            <div class="card-head">
+              <h3 class="card-title" id="h-rcases">Test cases</h3>
+              <div class="tag-filter" id="result-filter" role="group" aria-label="Show"></div>
+            </div>
+            <ul class="result-list" id="result-list"></ul>
+            <p class="empty-inline" id="result-empty" hidden></p>
+          </section>
+
+          <section class="card" id="smoke-card" aria-labelledby="h-smoke" hidden>
+            <div class="card-head">
+              <h3 class="card-title" id="h-smoke">Smoke check</h3>
+              <p class="card-sub" id="smoke-summary"></p>
+            </div>
+            <div class="table-wrap">
+              <table class="data-table" id="smoke-table">
+                <thead><tr><th scope="col">Page</th><th scope="col">Status</th><th scope="col">Console errors</th><th scope="col">Broken links</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="card" id="perf-card" aria-labelledby="h-perf" hidden>
+            <div class="card-head">
+              <h3 class="card-title" id="h-perf">Page speed</h3>
+              <ul class="legend" aria-label="Legend">
+                <li data-rating="good">Good</li><li data-rating="needs">Needs work</li><li data-rating="poor">Poor</li>
+              </ul>
+            </div>
+            <div class="table-wrap">
+              <table class="data-table" id="perf-table">
+                <thead><tr>
+                  <th scope="col">Page</th>
+                  <th scope="col" title="Time to first byte: how long the server takes to start answering">TTFB</th>
+                  <th scope="col" title="First contentful paint: when something first shows on screen">FCP</th>
+                  <th scope="col" title="Largest contentful paint: when the main content has shown">LCP</th>
+                  <th scope="col" title="Cumulative layout shift: how much the page jumps while loading">CLS</th>
+                  <th scope="col" title="Time until the page finished loading">Load</th>
+                </tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <p class="card-sub table-note">Colours follow Google’s Web Vitals thresholds. Load time has no official threshold, so it isn’t coloured.</p>
+          </section>
+        </div>
+
+        <aside class="card report-history" aria-labelledby="h-rhistory">
+          <h3 class="card-title" id="h-rhistory">All tests</h3>
+          <ol class="run-list" id="report-runs"></ol>
+        </aside>
+      </div>
+    </section>
+  </main>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
+  <!-- Add app -->
+  <dialog class="dlg" id="dlg-app" aria-labelledby="dlg-app-title">
+    <form class="dlg-form" id="app-form" novalidate>
+      <div class="dlg-head">
+        <h2 class="dlg-title" id="dlg-app-title">Add an app</h2>
+        <button type="button" class="btn btn-icon btn-ghost" data-close aria-label="Close">
+          <svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <div class="dlg-body">
+        <div class="app-preset" id="app-preset" role="group" aria-labelledby="app-preset-label">
+          <p class="app-preset-label" id="app-preset-label">Use a ready-made app</p>
+          <button type="button" class="preset-chip" id="btn-preset-releaseguard" aria-pressed="false">
+            <strong>ReleaseGuard portal</strong>
+            <span id="preset-releaseguard-note">Local · http://localhost:8090</span>
+          </button>
+        </div>
+        <div class="field">
+          <label for="app-name">App name</label>
+          <input id="app-name" class="input" type="text" autocomplete="off" placeholder="e.g. CRM" maxlength="60" required>
+        </div>
+        <fieldset class="env-fieldset">
+          <legend>Where it runs</legend>
+          <p class="field-hint">Add each place you test, like Staging or UAT. You choose one each time you run.</p>
+          <ol class="env-rows" id="env-rows"></ol>
+          <button type="button" class="btn btn-small btn-ghost btn-link" id="btn-add-env">
+            <svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"/></svg>Add another environment
+          </button>
+        </fieldset>
+        <div class="field app-projects">
+          <label for="app-projects">Project folders on this computer <span class="optional">optional</span></label>
+          <textarea id="app-projects" class="input textarea textarea-paths" rows="2" spellcheck="false" autocomplete="off" aria-describedby="app-projects-hint" placeholder="C:\projects\crm"></textarea>
+          <p class="field-hint" id="app-projects-hint">For developers: add the app’s code folder, one per line, so the devcrew crew can run this app’s QA cycle on its local environment after a fix. Testers can leave this empty.</p>
+        </div>
+        <p class="form-error" id="app-error" role="alert" hidden></p>
+      </div>
+      <div class="dlg-foot">
+        <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+        <button type="submit" class="btn btn-primary" id="app-save">Add app</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Test cases from a PRD -->
+  <dialog class="dlg dlg-wide" id="dlg-prd" aria-labelledby="prd-title">
+    <div class="dlg-form">
+      <div class="dlg-head">
+        <div>
+          <h2 class="dlg-title" id="prd-title">Write test cases from a PRD</h2>
+          <p class="dlg-sub" id="prd-sub">Claude Code reads the PRD and writes one case per acceptance criterion, edge case and error case. You choose which to add.</p>
+        </div>
+        <button type="button" class="btn btn-icon btn-ghost" data-close aria-label="Close">
+          <svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+
+      <form class="dlg-body prd-step" id="prd-form" data-step="form" novalidate>
+        <div class="field">
+          <label for="prd-name">PRD title</label>
+          <input id="prd-name" class="input" type="text" autocomplete="off" maxlength="120" placeholder="e.g. Lead management v2">
+        </div>
+        <div class="field">
+          <div class="composer-head">
+            <label for="prd-text">PRD text</label>
+            <label class="btn btn-small btn-ghost btn-link prd-file">
+              <input type="file" id="prd-file" accept=".txt,.md,.markdown,text/plain,text/markdown" class="sr-only">
+              <svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 15V3M7 8l5-5 5 5M5 21h14"/></svg>Choose a .txt or .md file
+            </label>
+          </div>
+          <textarea id="prd-text" class="input textarea" rows="9" spellcheck="false" placeholder="Paste the PRD, or one feature of it: its flows, business rules and acceptance criteria."></textarea>
+        </div>
+        <div class="prd-tip">
+          <strong>Confluence page, PDF or Word file?</strong>
+          <span>In Claude Code, run <code id="prd-command">/devcrew:qa-from-prd &lt;app-id&gt; &lt;link or file&gt;</code>. It reads the page with your own Atlassian sign-in and sends the cases here for you to review.</span>
+        </div>
+        <p class="form-error" id="prd-error" role="alert" hidden></p>
+      </form>
+
+      <div class="dlg-body prd-step prd-working" id="prd-working" data-step="working" hidden>
+        <span class="spinner" aria-hidden="true"></span>
+        <p class="prd-working-title">Claude Code is reading the PRD</p>
+        <p class="prd-working-sub" id="prd-working-sub">It writes the test cases in about a minute. You can close this window; the cases wait here for you.</p>
+      </div>
+
+      <div class="dlg-body prd-step" id="prd-review" data-step="review" hidden>
+        <div class="prd-review-bar">
+          <p class="prd-source" id="prd-source"></p>
+          <div class="prd-select">
+            <button type="button" class="btn btn-small btn-ghost" id="prd-all">Select all new</button>
+            <button type="button" class="btn btn-small btn-ghost" id="prd-none">Clear</button>
+          </div>
+        </div>
+        <div class="prd-groups" id="prd-groups"></div>
+        <details class="prd-removed" id="prd-removed" hidden>
+          <summary id="prd-removed-title"></summary>
+          <p class="field-hint">They were added from an earlier version of this PRD. Delete them from the case list if they no longer apply.</p>
+          <ul id="prd-removed-list"></ul>
+        </details>
+      </div>
+
+      <div class="dlg-foot">
+        <button type="button" class="btn btn-ghost btn-danger-text" id="prd-discard" hidden>Discard</button>
+        <span class="dlg-foot-gap"></span>
+        <button type="button" class="btn btn-ghost" data-close>Close</button>
+        <button type="submit" class="btn btn-primary" id="prd-go" form="prd-form">Write test cases</button>
+        <button type="button" class="btn btn-primary" id="prd-add" hidden>Add cases</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Confirm -->
+  <dialog class="dlg dlg-small" id="dlg-confirm" aria-labelledby="confirm-title" aria-describedby="confirm-body">
+    <div class="dlg-body">
+      <h2 class="dlg-title" id="confirm-title"></h2>
+      <p class="confirm-body" id="confirm-body"></p>
+    </div>
+    <div class="dlg-foot">
+      <button type="button" class="btn btn-ghost" id="confirm-no">Cancel</button>
+      <button type="button" class="btn btn-danger-solid" id="confirm-yes"></button>
+    </div>
+  </dialog>
+
+  <!-- Enlarged browser -->
+  <dialog class="viewer" id="dlg-viewer" aria-labelledby="viewer-title">
+    <div class="viewer-head">
+      <div class="viewer-titles">
+        <p class="viewer-kicker"><span class="account-chip" id="viewer-account"></span><span class="pill" id="viewer-status"></span></p>
+        <h2 class="viewer-title" id="viewer-title"></h2>
+      </div>
+      <button type="button" class="btn btn-icon btn-ghost" id="viewer-close" aria-label="Close">
+        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <div class="viewer-screen">
+      <img class="viewer-img" id="viewer-img" alt="">
+    </div>
+    <p class="viewer-step" id="viewer-step" aria-live="polite"></p>
+  </dialog>
+</body>
+</html>

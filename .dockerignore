@@ -1,0 +1,12 @@
+# Used by builds whose context is the repository root (the Python services).
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/node_modules
+portal
+toolkit
+monitoring/build
+monitoring/tests
+.git
+.env
+.env.*

@@ -1,0 +1,12 @@
+{
+  "Records": [
+    {
+      "EventSource": "aws:sns",
+      "Sns": {
+        "TopicArn": "arn:aws:sns:ap-southeast-1:123456789012:releaseguard-production-critical",
+        "Subject": "ALARM: \"production-rds-crm-prod-free-storage-critical\"",
+        "Message": "{\"AlarmName\":\"production-rds-crm-prod-free-storage-critical\",\"AlarmDescription\":\"RDS crm-prod free storage is below 10 GiB. Writes will fail when it reaches zero. runbook=db-disk-full\",\"AWSAccountId\":\"123456789012\",\"NewStateValue\":\"ALARM\",\"NewStateReason\":\"Threshold Crossed: 1 out of the last 1 datapoints [8.41 (23/10/26 09:10:00)] was less than the threshold (10.0).\",\"StateChangeTime\":\"2026-10-23T09:15:12.345+0000\",\"Region\":\"Asia Pacific (Singapore)\",\"AlarmArn\":\"arn:aws:cloudwatch:ap-southeast-1:123456789012:alarm:production-rds-crm-prod-free-storage-critical\",\"OldStateValue\":\"OK\",\"Trigger\":{\"Period\":300,\"EvaluationPeriods\":1,\"ComparisonOperator\":\"LessThanThreshold\",\"Threshold\":10.0,\"TreatMissingData\":\"missing\",\"Metrics\":[{\"Id\":\"free\",\"MetricStat\":{\"Metric\":{\"Dimensions\":[{\"value\":\"crm-prod\",\"name\":\"DBInstanceIdentifier\"}],\"MetricName\":\"FreeStorageSpace\",\"Namespace\":\"AWS/RDS\"},\"Period\":300,\"Stat\":\"Minimum\"},\"ReturnData\":false},{\"Expression\":\"free / 1073741824\",\"Id\":\"freegib\",\"Label\":\"Free storage (GiB)\",\"ReturnData\":true}]}}"
+      }
+    }
+  ]
+}

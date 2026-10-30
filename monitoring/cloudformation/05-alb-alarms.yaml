@@ -1,0 +1,126 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  ReleaseGuard AI - Application Load Balancer alarms: application 5xx errors, load balancer 5xx
+  errors, slow responses and unhealthy servers. Skip this stack if the site has no ALB.
+
+Parameters:
+  Environment:
+    Type: String
+    AllowedValues: [staging, production]
+    Default: staging
+  LoadBalancerFullName:
+    Type: String
+    Description: The part of the ALB ARN after "loadbalancer/", e.g. app/crm-alb/50dc6c495c0c9188
+    AllowedPattern: "^app/.+/.+$"
+  TargetGroupFullName:
+    Type: String
+    Description: The part of the target group ARN after the last ":", e.g. targetgroup/crm-web/943f017f100becff
+    AllowedPattern: "^targetgroup/.+/.+$"
+  WarningTopicArn:
+    Type: String
+  CriticalTopicArn:
+    Type: String
+  Target5xxWarning:
+    Type: Number
+    Default: 10
+    Description: Application 5xx responses per 5 minutes before warning.
+  Target5xxCritical:
+    Type: Number
+    Default: 50
+  Elb5xxCritical:
+    Type: Number
+    Default: 10
+    Description: Load balancer 5xx responses (no healthy server answered) per 5 minutes.
+  ResponseTimeP95WarningSeconds:
+    Type: Number
+    Default: 2
+
+Resources:
+  Target5xxWarningAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${Environment}-alb-app-5xx-warning
+      AlarmDescription: !Sub "The application returned more than ${Target5xxWarning} server errors (5xx) in 5 minutes. runbook=deployment-failure"
+      Namespace: AWS/ApplicationELB
+      MetricName: HTTPCode_Target_5XX_Count
+      Dimensions: [{ Name: LoadBalancer, Value: !Ref LoadBalancerFullName }]
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: !Ref Target5xxWarning
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref WarningTopicArn]
+      OKActions: [!Ref WarningTopicArn]
+
+  Target5xxCriticalAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${Environment}-alb-app-5xx-critical
+      AlarmDescription: !Sub "The application returned more than ${Target5xxCritical} server errors (5xx) in 5 minutes. runbook=deployment-failure"
+      Namespace: AWS/ApplicationELB
+      MetricName: HTTPCode_Target_5XX_Count
+      Dimensions: [{ Name: LoadBalancer, Value: !Ref LoadBalancerFullName }]
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: !Ref Target5xxCritical
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref CriticalTopicArn]
+      OKActions: [!Ref CriticalTopicArn]
+
+  Elb5xxCriticalAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${Environment}-alb-lb-5xx-critical
+      AlarmDescription: !Sub "The load balancer returned more than ${Elb5xxCritical} 5xx errors in 5 minutes. Servers may be down or unreachable. runbook=deployment-failure"
+      Namespace: AWS/ApplicationELB
+      MetricName: HTTPCode_ELB_5XX_Count
+      Dimensions: [{ Name: LoadBalancer, Value: !Ref LoadBalancerFullName }]
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: !Ref Elb5xxCritical
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref CriticalTopicArn]
+      OKActions: [!Ref CriticalTopicArn]
+
+  ResponseTimeWarningAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${Environment}-alb-response-time-warning
+      AlarmDescription: !Sub "95% of requests took longer than ${ResponseTimeP95WarningSeconds}s for 15 minutes. runbook=cpu-spike"
+      Namespace: AWS/ApplicationELB
+      MetricName: TargetResponseTime
+      Dimensions: [{ Name: LoadBalancer, Value: !Ref LoadBalancerFullName }]
+      ExtendedStatistic: p95
+      Period: 300
+      EvaluationPeriods: 3
+      DatapointsToAlarm: 3
+      Threshold: !Ref ResponseTimeP95WarningSeconds
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref WarningTopicArn]
+      OKActions: [!Ref WarningTopicArn]
+
+  UnhealthyHostsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${Environment}-alb-unhealthy-hosts
+      AlarmDescription: "At least one web server is failing the load balancer health check. runbook=deployment-failure"
+      Namespace: AWS/ApplicationELB
+      MetricName: UnHealthyHostCount
+      Dimensions:
+        - { Name: LoadBalancer, Value: !Ref LoadBalancerFullName }
+        - { Name: TargetGroup, Value: !Ref TargetGroupFullName }
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 3
+      DatapointsToAlarm: 2
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref CriticalTopicArn]
+      OKActions: [!Ref CriticalTopicArn]

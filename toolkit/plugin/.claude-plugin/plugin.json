@@ -1,0 +1,7 @@
+{
+  "name": "devcrew",
+  "version": "1.0.0",
+  "description": "Ziba Property AI dev crew: /fix, /feature and /task route work to the right agents (plan, build, QA, regression, review) automatically, with team rules, safety hooks, Jira/Confluence, and a live 3D office at http://localhost:4317.",
+  "author": { "name": "Ziba Property" },
+  "keywords": ["agents", "workflow", "qa", "laravel", "jira"]
+}

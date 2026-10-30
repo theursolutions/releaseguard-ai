@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="A live view of the Claude Code agents working on your task.">
+  <title>devcrew office</title>
+  <link rel="stylesheet" href="office.css">
+  <script type="module" src="office.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#panel">Skip to the activity panel</a>
+
+  <header class="topbar">
+    <h1 class="brand"><span class="brand-mark" aria-hidden="true"></span>devcrew office</h1>
+    <div class="topbar-actions">
+      <a class="btn btn-small topbar-link" href="/qa" title="Test a web app with real browsers">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>QA
+      </a>
+      <p class="conn" id="conn" role="status" data-state="connecting">
+        <span class="conn-dot" aria-hidden="true"></span><span id="conn-text">Connecting…</span>
+      </p>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="stage" id="stage" aria-label="Office view">
+      <div class="view view-3d" id="view-3d" aria-hidden="true" hidden></div>
+      <div class="poster" id="poster" hidden>
+        <div class="poster-art" aria-hidden="true">
+          <span></span><span></span><span></span><span></span><span></span><span></span>
+        </div>
+        <p>Opening the office…</p>
+      </div>
+      <div class="view view-2d" id="view-2d" hidden></div>
+
+      <div class="ribbon" id="demo-ribbon" hidden>Demo data</div>
+      <p class="scene-empty" id="scene-empty" hidden>No work yet</p>
+      <p class="notice" id="notice" role="status" hidden></p>
+
+      <div class="toolbar" role="toolbar" aria-label="View controls">
+        <button type="button" class="btn" id="btn-mode" aria-pressed="false">2D board</button>
+        <div class="cam-controls" id="cam-controls">
+          <button type="button" class="btn btn-icon" id="btn-rot-left" aria-label="Rotate left" title="Rotate left">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 12a8 8 0 1 0 2.3-5.6M4 4v5h5"/></svg>
+          </button>
+          <button type="button" class="btn btn-icon" id="btn-rot-right" aria-label="Rotate right" title="Rotate right">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5"/></svg>
+          </button>
+          <button type="button" class="btn btn-icon" id="btn-zoom-in" aria-label="Zoom in" title="Zoom in">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+          <button type="button" class="btn btn-icon" id="btn-zoom-out" aria-label="Zoom out" title="Zoom out">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14"/></svg>
+          </button>
+          <button type="button" class="btn" id="btn-reset">Reset view</button>
+        </div>
+      </div>
+    </section>
+
+    <aside class="panel" id="panel" aria-label="Activity" tabindex="-1">
+      <div class="panel-head">
+        <div class="panel-title-row">
+          <label class="field-label" for="session-select">Session</label>
+          <button type="button" class="btn btn-small panel-toggle" id="panel-toggle" aria-expanded="true" aria-controls="panel-body">Hide details</button>
+        </div>
+        <div class="session-row">
+          <select id="session-select" class="select" disabled>
+            <option>No sessions yet</option>
+          </select>
+          <span class="badge badge-demo" id="session-demo" hidden>Demo</span>
+        </div>
+        <p class="session-meta" id="session-meta"></p>
+      </div>
+
+      <div class="panel-body" id="panel-body">
+        <div class="empty" id="empty" hidden>
+          <p>No agents yet. Start Claude Code in a project with devcrew installed, or run the demo:</p>
+          <code class="cmd">node &lt;plugin&gt;/office/demo.js</code>
+        </div>
+
+        <section class="block" aria-labelledby="h-pipeline">
+          <h2 id="h-pipeline">Pipeline progress</h2>
+          <ol class="pipeline" id="pipeline"></ol>
+        </section>
+
+        <section class="block" aria-labelledby="h-working">
+          <h2 id="h-working">Working now <span class="count" id="working-count"></span></h2>
+          <ul class="working" id="working"></ul>
+          <p class="quiet" id="working-empty">Nobody is working right now.</p>
+        </section>
+
+        <section class="block" aria-labelledby="h-timeline">
+          <h2 id="h-timeline">Timeline</h2>
+          <ol class="timeline" id="timeline"></ol>
+          <p class="quiet" id="timeline-empty">No events yet.</p>
+        </section>
+      </div>
+
+      <p class="foot" id="foot"></p>
+    </aside>
+  </main>
+</body>
+</html>

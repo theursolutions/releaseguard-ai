@@ -1,0 +1,12 @@
+{
+  "name": "zibaproperty",
+  "owner": { "name": "Ziba Property" },
+  "metadata": { "description": "Ziba Property team plugins for Claude Code" },
+  "plugins": [
+    {
+      "name": "devcrew",
+      "source": "./plugin",
+      "description": "AI dev crew: /fix, /feature and /task route work through plan, build, QA, regression and review agents, with team rules, safety hooks and a live 3D office."
+    }
+  ]
+}

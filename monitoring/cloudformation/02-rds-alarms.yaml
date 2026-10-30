@@ -1,0 +1,232 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  ReleaseGuard AI - RDS MySQL alarms: free storage, CPU, connections, freeable memory and latency.
+  Deploy once per database instance.
+
+Parameters:
+  Environment:
+    Type: String
+    AllowedValues: [staging, production]
+    Default: staging
+  DBInstanceIdentifier:
+    Type: String
+    Description: RDS instance identifier, e.g. crm-prod
+  WarningTopicArn:
+    Type: String
+  CriticalTopicArn:
+    Type: String
+  FreeStorageWarningGiB:
+    Type: Number
+    Default: 20
+    Description: Set to about 20% of the allocated storage (e.g. 20 for a 100 GiB database).
+  FreeStorageCriticalGiB:
+    Type: Number
+    Default: 10
+    Description: Set to about 10% of the allocated storage.
+  CpuWarningPercent:
+    Type: Number
+    Default: 80
+  CpuCriticalPercent:
+    Type: Number
+    Default: 95
+  ConnectionsWarning:
+    Type: Number
+    Default: 120
+    Description: About 80% of the instance's max_connections (SHOW VARIABLES LIKE 'max_connections').
+  FreeableMemoryWarningMiB:
+    Type: Number
+    Default: 256
+  LatencyWarningMs:
+    Type: Number
+    Default: 50
+    Description: Average read or write latency in milliseconds.
+
+Resources:
+  # Storage alarms use metric math so thresholds can be given in GiB instead of bytes.
+  FreeStorageWarningAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${Environment}-rds-${DBInstanceIdentifier}-free-storage-warning
+      AlarmDescription: !Sub "RDS ${DBInstanceIdentifier} free storage is below ${FreeStorageWarningGiB} GiB. runbook=db-disk-full"
+      Metrics:
+        - Id: free
+          ReturnData: false
+          MetricStat:
+            Metric:
+              Namespace: AWS/RDS
+              MetricName: FreeStorageSpace
+              Dimensions: [{ Name: DBInstanceIdentifier, Value: !Ref DBInstanceIdentifier }]
+            Period: 300
+            Stat: Minimum
+        - Id: freegib
+          Expression: free / 1073741824
+          Label: Free storage (GiB)
+          ReturnData: true
+      ComparisonOperator: LessThanThreshold
+      Threshold: !Ref FreeStorageWarningGiB
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      TreatMissingData: missing
+      AlarmActions: [!Ref WarningTopicArn]
+      OKActions: [!Ref WarningTopicArn]
+
+  FreeStorageCriticalAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${Environment}-rds-${DBInstanceIdentifier}-free-storage-critical
+      AlarmDescription: !Sub "RDS ${DBInstanceIdentifier} free storage is below ${FreeStorageCriticalGiB} GiB. Writes will fail when it reaches zero. runbook=db-disk-full"
+      Metrics:
+        - Id: free
+          ReturnData: false
+          MetricStat:
+            Metric:
+              Namespace: AWS/RDS
+              MetricName: FreeStorageSpace
+              Dimensions: [{ Name: DBInstanceIdentifier, Value: !Ref DBInstanceIdentifier }]
+            Period: 300
+            Stat: Minimum
+        - Id: freegib
+          Expression: free / 1073741824
+          Label: Free storage (GiB)
+          ReturnData: true
+      ComparisonOperator: LessThanThreshold
+      Threshold: !Ref FreeStorageCriticalGiB
+      EvaluationPeriods: 1
+      TreatMissingData: missing
+      AlarmActions: [!Ref CriticalTopicArn]
+      OKActions: [!Ref CriticalTopicArn]
+
+  CpuWarningAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${Environment}-rds-${DBInstanceIdentifier}-cpu-warning
+      AlarmDescription: !Sub "RDS ${DBInstanceIdentifier} CPU above ${CpuWarningPercent}% for 10 minutes. runbook=cpu-spike"
+      Namespace: AWS/RDS
+      MetricName: CPUUtilization
+      Dimensions: [{ Name: DBInstanceIdentifier, Value: !Ref DBInstanceIdentifier }]
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: !Ref CpuWarningPercent
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: missing
+      AlarmActions: [!Ref WarningTopicArn]
+      OKActions: [!Ref WarningTopicArn]
+
+  CpuCriticalAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${Environment}-rds-${DBInstanceIdentifier}-cpu-critical
+      AlarmDescription: !Sub "RDS ${DBInstanceIdentifier} CPU above ${CpuCriticalPercent}% for 10 minutes. runbook=cpu-spike"
+      Namespace: AWS/RDS
+      MetricName: CPUUtilization
+      Dimensions: [{ Name: DBInstanceIdentifier, Value: !Ref DBInstanceIdentifier }]
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: !Ref CpuCriticalPercent
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: missing
+      AlarmActions: [!Ref CriticalTopicArn]
+      OKActions: [!Ref CriticalTopicArn]
+
+  ConnectionsWarningAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${Environment}-rds-${DBInstanceIdentifier}-connections-warning
+      AlarmDescription: !Sub "RDS ${DBInstanceIdentifier} has more than ${ConnectionsWarning} connections (near max_connections). runbook=db-connections"
+      Namespace: AWS/RDS
+      MetricName: DatabaseConnections
+      Dimensions: [{ Name: DBInstanceIdentifier, Value: !Ref DBInstanceIdentifier }]
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 5
+      DatapointsToAlarm: 3
+      Threshold: !Ref ConnectionsWarning
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: missing
+      AlarmActions: [!Ref WarningTopicArn]
+      OKActions: [!Ref WarningTopicArn]
+
+  FreeableMemoryWarningAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${Environment}-rds-${DBInstanceIdentifier}-memory-warning
+      AlarmDescription: !Sub "RDS ${DBInstanceIdentifier} freeable memory below ${FreeableMemoryWarningMiB} MiB. runbook=memory-pressure"
+      Metrics:
+        - Id: mem
+          ReturnData: false
+          MetricStat:
+            Metric:
+              Namespace: AWS/RDS
+              MetricName: FreeableMemory
+              Dimensions: [{ Name: DBInstanceIdentifier, Value: !Ref DBInstanceIdentifier }]
+            Period: 300
+            Stat: Minimum
+        - Id: memmib
+          Expression: mem / 1048576
+          Label: Freeable memory (MiB)
+          ReturnData: true
+      ComparisonOperator: LessThanThreshold
+      Threshold: !Ref FreeableMemoryWarningMiB
+      EvaluationPeriods: 3
+      DatapointsToAlarm: 3
+      TreatMissingData: missing
+      AlarmActions: [!Ref WarningTopicArn]
+      OKActions: [!Ref WarningTopicArn]
+
+  ReadLatencyWarningAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${Environment}-rds-${DBInstanceIdentifier}-read-latency-warning
+      AlarmDescription: !Sub "RDS ${DBInstanceIdentifier} average read latency above ${LatencyWarningMs} ms. runbook=cpu-spike"
+      Metrics:
+        - Id: lat
+          ReturnData: false
+          MetricStat:
+            Metric:
+              Namespace: AWS/RDS
+              MetricName: ReadLatency
+              Dimensions: [{ Name: DBInstanceIdentifier, Value: !Ref DBInstanceIdentifier }]
+            Period: 300
+            Stat: Average
+        - Id: latms
+          Expression: lat * 1000
+          Label: Read latency (ms)
+          ReturnData: true
+      ComparisonOperator: GreaterThanThreshold
+      Threshold: !Ref LatencyWarningMs
+      EvaluationPeriods: 3
+      DatapointsToAlarm: 3
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref WarningTopicArn]
+      OKActions: [!Ref WarningTopicArn]
+
+  WriteLatencyWarningAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${Environment}-rds-${DBInstanceIdentifier}-write-latency-warning
+      AlarmDescription: !Sub "RDS ${DBInstanceIdentifier} average write latency above ${LatencyWarningMs} ms. runbook=cpu-spike"
+      Metrics:
+        - Id: lat
+          ReturnData: false
+          MetricStat:
+            Metric:
+              Namespace: AWS/RDS
+              MetricName: WriteLatency
+              Dimensions: [{ Name: DBInstanceIdentifier, Value: !Ref DBInstanceIdentifier }]
+            Period: 300
+            Stat: Average
+        - Id: latms
+          Expression: lat * 1000
+          Label: Write latency (ms)
+          ReturnData: true
+      ComparisonOperator: GreaterThanThreshold
+      Threshold: !Ref LatencyWarningMs
+      EvaluationPeriods: 3
+      DatapointsToAlarm: 3
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref WarningTopicArn]
+      OKActions: [!Ref WarningTopicArn]

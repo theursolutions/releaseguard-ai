@@ -1,0 +1,81 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  ReleaseGuard AI - one CloudWatch dashboard for the whole system: web server, database, load
+  balancer (optional) and storage forecast.
+
+Parameters:
+  Environment:
+    Type: String
+    AllowedValues: [staging, production]
+    Default: staging
+  DBInstanceIdentifier:
+    Type: String
+  InstanceId:
+    Type: String
+  DiskPath:
+    Type: String
+    Default: /
+  LoadBalancerFullName:
+    Type: String
+    Default: ""
+    Description: Optional, e.g. app/crm-alb/50dc6c495c0c9188. Leave empty if there is no ALB.
+
+Conditions:
+  HasAlb: !Not [!Equals [!Ref LoadBalancerFullName, ""]]
+
+Resources:
+  Dashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub releaseguard-${Environment}
+      DashboardBody: !Join
+        - ""
+        - - !Sub |
+            {"widgets": [
+              {"type": "text", "x": 0, "y": 0, "width": 24, "height": 2,
+               "properties": {"markdown": "# ReleaseGuard - ${Environment}\nWeb server **${InstanceId}** · Database **${DBInstanceIdentifier}** · Alerts go to Slack with an AI diagnosis."}},
+              {"type": "metric", "x": 0, "y": 2, "width": 8, "height": 6,
+               "properties": {"title": "Web server CPU %", "region": "${AWS::Region}", "stat": "Average", "period": 300, "yAxis": {"left": {"min": 0, "max": 100}},
+                 "metrics": [["AWS/EC2", "CPUUtilization", "InstanceId", "${InstanceId}"]]}},
+              {"type": "metric", "x": 8, "y": 2, "width": 8, "height": 6,
+               "properties": {"title": "Web server memory used %", "region": "${AWS::Region}", "stat": "Average", "period": 300, "yAxis": {"left": {"min": 0, "max": 100}},
+                 "metrics": [["CWAgent", "mem_used_percent", "InstanceId", "${InstanceId}"]]}},
+              {"type": "metric", "x": 16, "y": 2, "width": 8, "height": 6,
+               "properties": {"title": "Web server disk used % (${DiskPath})", "region": "${AWS::Region}", "stat": "Maximum", "period": 300, "yAxis": {"left": {"min": 0, "max": 100}},
+                 "metrics": [["CWAgent", "disk_used_percent", "InstanceId", "${InstanceId}", "path", "${DiskPath}"]]}},
+              {"type": "metric", "x": 0, "y": 8, "width": 8, "height": 6,
+               "properties": {"title": "Database free storage (GiB)", "region": "${AWS::Region}", "period": 300,
+                 "metrics": [[{"expression": "free/1073741824", "label": "Free GiB", "id": "gib"}],
+                             ["AWS/RDS", "FreeStorageSpace", "DBInstanceIdentifier", "${DBInstanceIdentifier}", {"id": "free", "stat": "Minimum", "visible": false}]]}},
+              {"type": "metric", "x": 8, "y": 8, "width": 8, "height": 6,
+               "properties": {"title": "Database CPU % and connections", "region": "${AWS::Region}", "period": 300,
+                 "metrics": [["AWS/RDS", "CPUUtilization", "DBInstanceIdentifier", "${DBInstanceIdentifier}", {"stat": "Average"}],
+                             ["AWS/RDS", "DatabaseConnections", "DBInstanceIdentifier", "${DBInstanceIdentifier}", {"stat": "Maximum"}]]}},
+              {"type": "metric", "x": 16, "y": 8, "width": 8, "height": 6,
+               "properties": {"title": "Database latency (ms)", "region": "${AWS::Region}", "period": 300,
+                 "metrics": [[{"expression": "r*1000", "label": "Read ms", "id": "rms"}],
+                             [{"expression": "w*1000", "label": "Write ms", "id": "wms"}],
+                             ["AWS/RDS", "ReadLatency", "DBInstanceIdentifier", "${DBInstanceIdentifier}", {"id": "r", "stat": "Average", "visible": false}],
+                             ["AWS/RDS", "WriteLatency", "DBInstanceIdentifier", "${DBInstanceIdentifier}", {"id": "w", "stat": "Average", "visible": false}]]}},
+              {"type": "metric", "x": 0, "y": 14, "width": 8, "height": 6,
+               "properties": {"title": "Days until disk full (forecast)", "region": "${AWS::Region}", "stat": "Minimum", "period": 21600,
+                 "metrics": [["ReleaseGuard/Forecast", "DaysUntilFull", "Resource", "rds:${DBInstanceIdentifier}", {"label": "Database"}],
+                             ["ReleaseGuard/Forecast", "DaysUntilFull", "Resource", "ec2:${InstanceId}:${DiskPath}", {"label": "Web server"}]]}}
+          - !If
+            - HasAlb
+            - !Sub |
+                ,
+                {"type": "metric", "x": 8, "y": 14, "width": 8, "height": 6,
+                 "properties": {"title": "Requests and server errors", "region": "${AWS::Region}", "stat": "Sum", "period": 300,
+                   "metrics": [["AWS/ApplicationELB", "RequestCount", "LoadBalancer", "${LoadBalancerFullName}"],
+                               ["AWS/ApplicationELB", "HTTPCode_Target_5XX_Count", "LoadBalancer", "${LoadBalancerFullName}", {"label": "App 5xx"}],
+                               ["AWS/ApplicationELB", "HTTPCode_ELB_5XX_Count", "LoadBalancer", "${LoadBalancerFullName}", {"label": "LB 5xx"}]]}},
+                {"type": "metric", "x": 16, "y": 14, "width": 8, "height": 6,
+                 "properties": {"title": "Response time p95 (s)", "region": "${AWS::Region}", "stat": "p95", "period": 300,
+                   "metrics": [["AWS/ApplicationELB", "TargetResponseTime", "LoadBalancer", "${LoadBalancerFullName}"]]}}
+            - ""
+          - "]}"
+
+Outputs:
+  DashboardUrl:
+    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards/dashboard/releaseguard-${Environment}
